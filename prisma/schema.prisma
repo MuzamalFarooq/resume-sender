@@ -1,0 +1,323 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum RecruiterStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+enum ResumeStatus {
+  UPLOADING
+  READY
+  FAILED
+  ARCHIVED
+}
+
+enum GmailAccountStatus {
+  CONNECTED
+  DISCONNECTED
+  REAUTH_REQUIRED
+}
+
+enum CampaignStatus {
+  DRAFT
+  QUEUED
+  SENDING
+  PAUSED
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum CampaignRecipientStatus {
+  PENDING
+  SENDING
+  SENT
+  FAILED
+  SKIPPED
+}
+
+enum EmailLogStatus {
+  QUEUED
+  SENT
+  FAILED
+  BOUNCED
+  BLOCKED
+}
+
+enum SuppressionReason {
+  UNSUBSCRIBED
+  BOUNCED
+  COMPLAINT
+  MANUAL
+}
+
+enum OutboxEventStatus {
+  PENDING
+  PROCESSING
+  PROCESSED
+  FAILED
+}
+
+enum JobApplicationStatus {
+  SAVED
+  APPLIED
+  INTERVIEWING
+  OFFER
+  REJECTED
+  WITHDRAWN
+}
+
+model User {
+  id                 String              @id @default(cuid())
+  name               String?
+  email              String              @unique
+  emailVerified      DateTime?
+  image              String?
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  recruiters         Recruiter[]
+  templates          EmailTemplate[]
+  resumes            Resume[]
+  gmailAccounts      GmailAccount[]
+  campaigns          Campaign[]
+  emailLogs          EmailLog[]
+  suppressions       Suppression[]
+  auditLogs          AuditLog[]
+  outboxEvents       OutboxEvent[]
+  applications       JobApplication[]
+  campaignRecipients CampaignRecipient[]
+  resumeRateLimits   ResumeRateLimit[]
+
+  @@index([createdAt])
+}
+
+model Recruiter {
+  id           String              @id @default(cuid())
+  userId       String
+  name         String
+  email        String
+  company      String              @default("")
+  jobTitle     String              @default("")
+  status       RecruiterStatus     @default(ACTIVE)
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+  user         User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  recipients   CampaignRecipient[]
+  applications JobApplication[]
+
+  @@unique([userId, email])
+  @@index([userId, createdAt])
+  @@index([userId, company])
+  @@index([userId, status])
+}
+
+model EmailTemplate {
+  id        String     @id @default(cuid())
+  userId    String
+  name      String
+  subject   String
+  body      String
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  campaigns Campaign[]
+
+  @@unique([userId, name])
+  @@index([userId, updatedAt])
+}
+
+model Resume {
+  id          String       @id @default(cuid())
+  userId      String
+  displayName String       @default("")
+  fileName    String
+  contentType String
+  sizeBytes   Int
+  storageKey  String
+  checksum    String?
+  isDefault   Boolean      @default(false)
+  defaultSlot String?
+  status      ResumeStatus @default(UPLOADING)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  campaigns   Campaign[]
+
+  @@unique([userId, storageKey])
+  @@unique([userId, defaultSlot])
+  @@index([userId, status, createdAt])
+}
+
+model ResumeRateLimit {
+  id          String   @id @default(cuid())
+  userId      String
+  bucket      String
+  windowStart DateTime
+  count       Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, bucket, windowStart])
+  @@index([windowStart])
+}
+
+model GmailAccount {
+  id                     String             @id @default(cuid())
+  userId                 String
+  email                  String
+  providerAccountId      String
+  accessTokenCiphertext  String?
+  refreshTokenCiphertext String?
+  tokenExpiresAt         DateTime?
+  scopes                 String[]
+  status                 GmailAccountStatus @default(DISCONNECTED)
+  createdAt              DateTime           @default(now())
+  updatedAt              DateTime           @updatedAt
+  user                   User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  campaigns              Campaign[]
+
+  @@unique([userId, email])
+  @@unique([providerAccountId])
+  @@index([userId, status])
+}
+
+model Campaign {
+  id             String              @id @default(cuid())
+  userId         String
+  name           String
+  status         CampaignStatus      @default(DRAFT)
+  templateId     String?
+  resumeId       String?
+  gmailAccountId String?
+  scheduledAt    DateTime?
+  startedAt      DateTime?
+  completedAt    DateTime?
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+  user           User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  template       EmailTemplate?      @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  resume         Resume?             @relation(fields: [resumeId], references: [id], onDelete: SetNull)
+  gmailAccount   GmailAccount?       @relation(fields: [gmailAccountId], references: [id], onDelete: SetNull)
+  recipients     CampaignRecipient[]
+  emailLogs      EmailLog[]
+
+  @@index([userId, status, createdAt])
+  @@index([scheduledAt, status])
+}
+
+model CampaignRecipient {
+  id          String                  @id @default(cuid())
+  userId      String
+  campaignId  String
+  recruiterId String?
+  name        String
+  email       String
+  company     String                  @default("")
+  status      CampaignRecipientStatus @default(PENDING)
+  createdAt   DateTime                @default(now())
+  updatedAt   DateTime                @updatedAt
+  user        User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  campaign    Campaign                @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  recruiter   Recruiter?              @relation(fields: [recruiterId], references: [id], onDelete: SetNull)
+  emailLogs   EmailLog[]
+
+  @@unique([campaignId, email])
+  @@index([userId, status])
+  @@index([campaignId, status])
+}
+
+model EmailLog {
+  id                String             @id @default(cuid())
+  userId            String
+  campaignId        String?
+  recipientId       String?
+  toEmail           String
+  subject           String
+  status            EmailLogStatus     @default(QUEUED)
+  providerMessageId String?            @unique
+  errorCode         String?
+  sentAt            DateTime?
+  createdAt         DateTime           @default(now())
+  user              User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  campaign          Campaign?          @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  recipient         CampaignRecipient? @relation(fields: [recipientId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@index([campaignId, status])
+  @@index([recipientId])
+}
+
+model Suppression {
+  id        String            @id @default(cuid())
+  userId    String
+  email     String
+  reason    SuppressionReason
+  source    String?
+  createdAt DateTime          @default(now())
+  user      User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, email])
+  @@index([userId, reason])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String?
+  action     String
+  entityType String
+  entityId   String?
+  metadata   Json?
+  createdAt  DateTime @default(now())
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@index([entityType, entityId])
+}
+
+model OutboxEvent {
+  id             String            @id @default(cuid())
+  userId         String?
+  eventType      String
+  payload        Json
+  status         OutboxEventStatus @default(PENDING)
+  idempotencyKey String?
+  attempts       Int               @default(0)
+  availableAt    DateTime          @default(now())
+  lockedAt       DateTime?
+  processedAt    DateTime?
+  lastError      String?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  user           User?             @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@unique([userId, idempotencyKey])
+  @@index([status, availableAt])
+  @@index([userId, createdAt])
+}
+
+model JobApplication {
+  id          String               @id @default(cuid())
+  userId      String
+  recruiterId String?
+  company     String
+  jobTitle    String
+  jobUrl      String?
+  status      JobApplicationStatus @default(SAVED)
+  appliedAt   DateTime?
+  notes       String               @default("")
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+  user        User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  recruiter   Recruiter?           @relation(fields: [recruiterId], references: [id], onDelete: SetNull)
+
+  @@index([userId, status, createdAt])
+  @@index([userId, company])
+}
