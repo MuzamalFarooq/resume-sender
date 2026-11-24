@@ -5,3 +5,4 @@ out/
 coverage/
 generated/prisma/
 *.tsbuildinfo
+.neon
