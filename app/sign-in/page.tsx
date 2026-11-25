@@ -2,20 +2,22 @@ import Link from "next/link";
 import { getServerSession } from "next-auth";
 import { redirect } from "next/navigation";
 import { Sparkles } from "lucide-react";
-import { authOptions } from "@/lib/auth";
+import { authOptions, getSafeCallbackUrl } from "@/lib/auth";
 import SignInButton from "./sign-in-button";
 
 export default async function SignInPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; callbackUrl?: string }>;
 }) {
   const session = await getServerSession(authOptions);
   if (session?.user?.id) {
     redirect("/dashboard");
   }
 
-  const { error } = await searchParams;
+  const { error, callbackUrl } = await searchParams;
+  const safeCallbackUrl = getSafeCallbackUrl(callbackUrl);
+  const errorMessage = getSignInErrorMessage(error);
 
   return (
     <main className="auth-page">
@@ -28,10 +30,30 @@ export default async function SignInPage({
           <h1 id="sign-in-title">Your search, in one place.</h1>
           <p>Sign in to securely access your recruiter contacts and email templates.</p>
         </div>
-        <SignInButton />
-        {error && <p className="auth-error" role="alert">Sign-in failed. Check the Google OAuth configuration and try again.</p>}
+        <SignInButton callbackUrl={safeCallbackUrl} />
+        {errorMessage && <p className="auth-error" role="alert">{errorMessage}</p>}
         <p className="auth-privacy">Your workspace is private to your account.</p>
       </section>
     </main>
   );
+}
+
+function getSignInErrorMessage(error?: string): string | null {
+  if (!error) {
+    return null;
+  }
+
+  if (error === "AccessDenied") {
+    return "Google sign-in was cancelled or the account email could not be verified.";
+  }
+
+  if (error === "Configuration") {
+    return "Google sign-in is not configured. Please contact the site administrator.";
+  }
+
+  if (error === "OAuthAccountNotLinked") {
+    return "This Google account could not be linked safely. Please contact support.";
+  }
+
+  return "Google sign-in could not be completed. Please try again.";
 }

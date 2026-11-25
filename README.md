@@ -19,13 +19,24 @@ Provide these variables through your process manager or deployment environment; 
 - `DATABASE_URL`: PostgreSQL connection string.
 - `NEXTAUTH_SECRET`: a strong random secret for signed sessions.
 - `NEXTAUTH_URL`: canonical application URL in deployed environments.
-- `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`: Google OAuth credentials. Add `http://localhost:3000/api/auth/callback/google` as an authorized redirect URI.
+- `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`: server-only Google OAuth web-client credentials. The requested scopes are limited to `openid email profile`. Add `http://localhost:3000` as an authorized JavaScript origin and `http://localhost:3000/api/auth/callback/google` as an authorized redirect URI.
 - `STORAGE_PROVIDER`, `STORAGE_ENDPOINT`, `STORAGE_REGION`, `STORAGE_BUCKET`, `STORAGE_ACCESS_KEY_ID`, and `STORAGE_SECRET_ACCESS_KEY`: server-only private object-storage settings.
 - `STORAGE_FORCE_PATH_STYLE`: set to `true` only when required by the S3-compatible provider.
 - `STORAGE_SIGNED_URL_TTL_SECONDS`: signed preview/download lifetime, limited to 60–300 seconds.
 - `RESUME_MAX_FILE_SIZE_BYTES`: upload limit from 1 byte to 5 MiB; defaults to `5242880`.
 
 See [.env.example](./.env.example) for variable names and placeholder values. Copy the placeholders into your deployment's secret manager; do not commit real credentials.
+
+### Google OAuth setup
+
+1. Create or select a project in Google Cloud Console and configure the OAuth consent screen.
+2. Create an OAuth 2.0 Client ID with application type **Web application**.
+3. Add `http://localhost:3000` under authorized JavaScript origins for local development.
+4. Add `http://localhost:3000/api/auth/callback/google` under authorized redirect URIs.
+5. For production, add the HTTPS production origin and `https://<your-domain>/api/auth/callback/google`. Set `NEXTAUTH_URL` to that canonical HTTPS origin. For Vercel Preview sign-in, authorize the exact preview origin and callback URL; Google does not accept wildcard origins.
+6. Store `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and a strong `NEXTAUTH_SECRET` in the deployment secret manager. For Vercel, configure them in the appropriate Development, Preview, and Production environments, set each `NEXTAUTH_URL` to its canonical origin, then redeploy.
+
+The app uses NextAuth's OAuth state and PKCE checks, JWT sessions, and its HttpOnly, SameSite cookies (secure cookies in production). Google account linking requires Google's verified email claim; no Gmail API or mail-sending scopes are requested. There is no separate password registration flow: first-time Google sign-in creates the user and returning Google identities resolve to that same account.
 
 The database schema is in `prisma/schema.prisma`. `npm run db:deploy` applies checked-in additive migrations without resetting data. `npm run db:check` verifies connectivity using the `DATABASE_URL` process variable. `npm run db:generate` regenerates the Prisma client.
 
@@ -40,7 +51,7 @@ The resume manager uses the `20261121220000_resume_manager` additive migration. 
 ## Current implementation
 
 - Responsive dashboard and workspace navigation.
-- Google OAuth sign-in with verified-email checks and user records stored in PostgreSQL.
+- Google OAuth sign-in with verified-email checks, persistent provider-account linking, and user records stored in PostgreSQL.
 - User-scoped recruiter and email-template CRUD APIs with Zod validation and normalized email addresses.
 - Duplicate-safe recruiter CSV imports and an explicit, retry-safe import flow for legacy browser contacts/templates.
 - Dashboard counts sourced from PostgreSQL.
