@@ -12,8 +12,8 @@ import { getServerSession } from "next-auth";
 import Link from "next/link";
 import { authOptions } from "@/lib/auth";
 import "./welcome.css";
-
 const features = [
+
   {
     icon: Users,
     title: "Recruiter management",
