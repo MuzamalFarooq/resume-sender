@@ -11,7 +11,7 @@ export default function SignInButton() {
     setError("");
     setLoading(true);
     try {
-      const result = await signIn("google", { callbackUrl: "/", redirect: false });
+      const result = await signIn("google", { callbackUrl: "/dashboard", redirect: false });
       if (result?.error) {
         setError("Sign in is unavailable. Check the Google OAuth configuration and try again.");
       } else if (result?.url) {
